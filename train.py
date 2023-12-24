@@ -105,6 +105,13 @@ def train(hyp, opt, device, tb_writer=None):
         if any(x in k for x in freeze):
             print('freezing %s' % k)
             v.requires_grad = False
+    if opt.freeze != -1:
+        for n, l in enumerate(model.model):
+            print('freezing layer %s' % n)
+            for p in l.parameters():
+                p.requires_grad = False
+            if n == opt.freeze:
+                break
 
     # Optimizer
     nbs = 64  # nominal batch size
@@ -507,6 +514,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_period', type=int, default=-1, help='Log model after every "save_period" epoch')
     parser.add_argument('--artifact_alias', type=str, default="latest", help='version of dataset artifact to be used')
     parser.add_argument('--kpt-label', action='store_true', help='use keypoint labels for training')
+    parser.add_argument('--freeze', type=int, default=-1, help='freeze first n layers')
     opt = parser.parse_args()
 
     # Set DDP variables
