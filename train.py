@@ -267,6 +267,11 @@ def train(hyp, opt, device, tb_writer=None):
                 f'Starting training for {epochs} epochs...')
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         model.train()
+        if opt.freeze != -1:
+            for n, l in enumerate(model.model):
+                l.eval()
+                if n == opt.freeze:
+                    break
 
         # Update image weights (optional)
         if opt.image_weights:
