@@ -105,6 +105,13 @@ def train(hyp, opt, device, tb_writer=None):
         if any(x in k for x in freeze):
             print('freezing %s' % k)
             v.requires_grad = False
+	if opt.freeze != -1:
+        for n, l in enumerate(model.model):
+            print('freezing layer %s' % n)
+            for p in l.parameters():
+                p.requires_grad = False
+            if n == opt.freeze:
+                break
 
     # Optimizer
     nbs = 64  # nominal batch size
@@ -306,6 +313,11 @@ def train(hyp, opt, device, tb_writer=None):
     torch.save(model, wdir / 'init.pt')
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         model.train()
+		if opt.freeze != -1:
+            for n, l in enumerate(model.model):
+                l.eval()
+                if n == opt.freeze:
+                    break
 
         # Update image weights (optional)
         if opt.image_weights:
@@ -562,6 +574,7 @@ if __name__ == '__main__':
     parser.add_argument('--artifact_alias', type=str, default="latest", help='version of dataset artifact to be used')
     parser.add_argument('--freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone of yolov7=50, first3=0 1 2')
     parser.add_argument('--v5-metric', action='store_true', help='assume maximum recall as 1.0 in AP calculation')
+	parser.add_argument('--freeze', type=int, default=-1, help='freeze first n layers')
     opt = parser.parse_args()
 
     # Set DDP variables
