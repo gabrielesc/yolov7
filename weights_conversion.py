@@ -71,8 +71,9 @@ def convert_yolo(l):
         else:
             w.extend(np.zeros(l.m[i].out_channels))
         # write convolutional layer weights
-        permuted_weights = l.m[i].weight.permute(0, 2, 3, 1)
-        w.extend(permuted_weights.detach().numpy().flatten())
+        # permuted_weights = l.m[i].weight.permute(0, 2, 3, 1)
+        # w.extend(permuted_weights.detach().numpy().flatten())
+        w.extend(l.m[i].weight.detach().numpy().flatten())
 
         weights.append(w)
 
