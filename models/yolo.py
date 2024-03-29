@@ -105,6 +105,20 @@ class Detect(nn.Module):
 
         return x if self.training else (torch.cat(z, 1), x)
 
+    def fuse(self):
+        print("Detect.fuse")
+        # fuse ImplicitA and Convolution
+        for i in range(len(self.m)):
+            c1,c2,_,_ = self.m[i].weight.shape
+            c1_,c2_, _,_ = self.ia[i].implicit.shape
+            self.m[i].bias += torch.matmul(self.m[i].weight.reshape(c1,c2),self.ia[i].implicit.reshape(c2_,c1_)).squeeze(1)
+
+        # fuse ImplicitM and Convolution
+        for i in range(len(self.m)):
+            c1,c2, _,_ = self.im[i].implicit.shape
+            self.m[i].bias *= self.im[i].implicit.reshape(c2)
+            self.m[i].weight *= self.im[i].implicit.transpose(0,1)
+    
     @staticmethod
     def _make_grid(nx=20, ny=20):
         yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
@@ -206,6 +220,20 @@ class IDetect(nn.Module):
 
         return x if self.training else (torch.cat(z, 1), x)
 
+    def fuse(self):
+        print("IDetect.fuse")
+        # fuse ImplicitA and Convolution
+        for i in range(len(self.m)):
+            c1,c2,_,_ = self.m[i].weight.shape
+            c1_,c2_, _,_ = self.ia[i].implicit.shape
+            self.m[i].bias += torch.matmul(self.m[i].weight.reshape(c1,c2),self.ia[i].implicit.reshape(c2_,c1_)).squeeze(1)
+
+        # fuse ImplicitM and Convolution
+        for i in range(len(self.m)):
+            c1,c2, _,_ = self.im[i].implicit.shape
+            self.m[i].bias *= self.im[i].implicit.reshape(c2)
+            self.m[i].weight *= self.im[i].implicit.transpose(0,1)
+    
     @staticmethod
     def _make_grid(nx=20, ny=20):
         yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
@@ -255,10 +283,16 @@ class IKeypoint(nn.Module):
         z = []  # inference output
         self.training |= self.export
         for i in range(self.nl):
-            if self.nkpt is None or self.nkpt==0:
-                x[i] = self.im[i](self.m[i](self.ia[i](x[i])))  # conv
-            else :
-                x[i] = torch.cat((self.im[i](self.m[i](self.ia[i](x[i]))), self.m_kpt[i](x[i])), axis=1)
+            if self.im[i] is not None:
+                if self.nkpt is None or self.nkpt==0:
+                    x[i] = self.im[i](self.m[i](self.ia[i](x[i])))  # conv
+                else :
+                    x[i] = torch.cat((self.im[i](self.m[i](self.ia[i](x[i]))), self.m_kpt[i](x[i])), axis=1)
+            else:
+                if self.nkpt is None or self.nkpt==0:
+                    x[i] = self.m[i](x[i])
+                else :
+                    x[i] = torch.cat((self.m[i](x[i]), self.m_kpt[i](x[i])), axis=1)
 
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
@@ -307,6 +341,26 @@ class IKeypoint(nn.Module):
 
         return x if self.training else (torch.cat(z, 1), x)
 
+    def fuse(self):
+        # fuse ImplicitA and Convolution
+        self.eval()
+        for name, param in self.named_parameters():
+            param.requires_grad = False
+        
+        for i in range(len(self.m)):
+            c1,c2,_,_ = self.m[i].weight.shape
+            c1_,c2_, _,_ = self.ia[i].implicit.shape
+            self.m[i].bias += torch.matmul(self.m[i].weight.reshape(c1,c2),self.ia[i].implicit.reshape(c2_,c1_)).squeeze(1)
+
+        # fuse ImplicitM and Convolution
+        for i in range(len(self.m)):
+            c1,c2, _,_ = self.im[i].implicit.shape
+            self.m[i].bias *= self.im[i].implicit.reshape(c2)
+            self.m[i].weight *= self.im[i].implicit.transpose(0,1)
+
+        for i in range(len(self.m)):
+            self.im[i] = None
+    
     @staticmethod
     def _make_grid(nx=20, ny=20):
         yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
@@ -445,6 +499,8 @@ class Model(nn.Module):
                 m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
                 delattr(m, 'bn')  # remove batchnorm
                 m.forward = m.fuseforward  # update forward
+            elif type(m) is IKeypoint:
+                m.fuse()
         self.info()
         return self
 

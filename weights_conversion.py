@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 
 from models.common import Conv, RepConv, SPPCSPC
-from models.yolo import Detect, IDetect
+from models.yolo import Detect, IDetect, IKeypoint
 from models.experimental import attempt_download, attempt_load, Ensemble
 from utils.torch_utils import select_device
 
@@ -46,6 +46,8 @@ def convert_sppcspc(l):
 
 
 def convert_repconv(l):
+    if hasattr(l, 'rbr_reparam') == False:
+        l.fuse_repvgg_block()
     weights = []
     if l.rbr_reparam:
         if l.rbr_reparam.bias is not None:
@@ -69,8 +71,38 @@ def convert_yolo(l):
         else:
             w.extend(np.zeros(l.m[i].out_channels))
         # write convolutional layer weights
-        permuted_weights = l.m[i].weight.permute(0, 2, 3, 1)
-        w.extend(permuted_weights.detach().numpy().flatten())
+        # permuted_weights = l.m[i].weight.permute(0, 2, 3, 1)
+        # w.extend(permuted_weights.detach().numpy().flatten())
+        w.extend(l.m[i].weight.detach().numpy().flatten())
+
+        weights.append(w)
+
+    return weights
+
+def convert_yolopose(l):
+    weights = []
+    for i in range(l.nl):
+        w = []
+        if l.m[i].bias is not None:
+            w.extend(l.m[i].bias.detach().numpy())
+        else:
+            w.extend(np.zeros(l.m[i].out_channels))
+        # write convolutional layer weights
+        # permuted_weights = l.m[i].weight.permute(0, 2, 3, 1)
+        # w.extend(permuted_weights.detach().numpy().flatten())
+        w.extend(l.m[i].weight.detach().numpy().flatten())
+
+        for m in l.m_kpt[i]:
+            if isinstance(m, Conv):
+                m_weights = convert_conv(m)
+                weights.extend(m_weights)
+            elif isinstance(m, nn.Conv2d):
+                if m.bias is not None:
+                    weights.extend(m.bias.detach().numpy())
+                else:
+                    weights.extend(np.zeros(m.out_channels))
+                # write convolutional layer weights
+                weights.extend(m.weight.detach().numpy().flatten())
 
         weights.append(w)
 
@@ -100,7 +132,7 @@ def read_layer_indices(s, layer_count):
     return idx
 
 
-def main(input_filename, layers, append_filename, output_filename):
+def main(input_filename, layers, append_filename, output_filename, save_weights):
     MAJOR_VERSION = 0
     MINOR_VERSION = 2
     PATCH_VERSION = 5
@@ -135,53 +167,68 @@ def main(input_filename, layers, append_filename, output_filename):
     weights = []
     repconv_weights = []
     yolo_weights = []
+    yolopose_weights = []
     counter = 0
     for n, l in enumerate(model.model):
         if len(indices) == 0 or n in indices:
             print('saving layer #' + str(n) + ' weights...')
             print(l)
             if isinstance(l, Conv):
-                layer_weights = convert_conv(l) 
-                layer_weights_filename = path.join(path.dirname(output_filename), "layer_" + str(counter) + ".txt")
-                counter += 1
-                with open(layer_weights_filename, "w") as txt_file:
-                    for v in layer_weights:
-                        txt_file.write(str(v) + "\n")
+                layer_weights = convert_conv(l)
+                if save_weights:
+                    layer_weights_filename = path.join(path.dirname(output_filename), "layer_" + str(counter) + ".txt")
+                    counter += 1
+                    with open(layer_weights_filename, "w") as txt_file:
+                        for v in layer_weights:
+                            txt_file.write(str(v) + "\n")
                 weights.extend(layer_weights)
             elif isinstance(l, SPPCSPC):
                 sppcspc_weights = convert_sppcspc(l)
-                for sppcspc_w in sppcspc_weights:
-                    layer_weights_filename = path.join(path.dirname(output_filename), "layer_" + str(counter) + ".txt")
-                    counter += 1
-                    with open(layer_weights_filename, "w") as txt_file:
-                        for v in sppcspc_w:
-                            txt_file.write(str(v) + "\n")
+                if save_weights:
+                    for sppcspc_w in sppcspc_weights:
+                        layer_weights_filename = path.join(path.dirname(output_filename), "layer_" + str(counter) + ".txt")
+                        counter += 1
+                        with open(layer_weights_filename, "w") as txt_file:
+                            for v in sppcspc_w:
+                                txt_file.write(str(v) + "\n")
                 for sppcspc_w in sppcspc_weights:
                     weights.extend(sppcspc_w)
             elif isinstance(l, RepConv):
-                layer_weights = convert_repconv(l) 
-                layer_weights_filename = path.join(path.dirname(output_filename), "layer_" + str(counter) + "_r.txt")
-                counter += 1
-                with open(layer_weights_filename, "w") as txt_file:
-                    for v in layer_weights:
-                        txt_file.write(str(v) + "\n")
+                layer_weights = convert_repconv(l)
+                if save_weights:
+                    layer_weights_filename = path.join(path.dirname(output_filename), "layer_" + str(counter) + "_r.txt")
+                    counter += 1
+                    with open(layer_weights_filename, "w") as txt_file:
+                        for v in layer_weights:
+                            txt_file.write(str(v) + "\n")
                 repconv_weights.append(layer_weights)
             elif isinstance(l, Detect):
                 yolo_weights = convert_yolo(l)
-                for yolo_w in yolo_weights:
-                    layer_weights_filename = path.join(path.dirname(output_filename), "layer_" + str(counter) + "_y.txt")
-                    counter += 1
-                    with open(layer_weights_filename, "w") as txt_file:
-                        for v in yolo_w:
-                            txt_file.write(str(v) + "\n")
+                if save_weights:
+                    for yolo_w in yolo_weights:
+                        layer_weights_filename = path.join(path.dirname(output_filename), "layer_" + str(counter) + "_y.txt")
+                        counter += 1
+                        with open(layer_weights_filename, "w") as txt_file:
+                            for v in yolo_w:
+                                txt_file.write(str(v) + "\n")
             elif isinstance(l, IDetect):
                 yolo_weights = convert_yolo(l)
-                for yolo_w in yolo_weights:
-                    layer_weights_filename = path.join(path.dirname(output_filename), "layer_" + str(counter) + ".txt")
-                    counter += 1
-                    with open(layer_weights_filename, "w") as txt_file:
-                        for v in yolo_w:
-                            txt_file.write(str(v) + "\n")
+                if save_weights:
+                    for yolo_w in yolo_weights:
+                        layer_weights_filename = path.join(path.dirname(output_filename), "layer_" + str(counter) + ".txt")
+                        counter += 1
+                        with open(layer_weights_filename, "w") as txt_file:
+                            for v in yolo_w:
+                                txt_file.write(str(v) + "\n")
+            elif isinstance(l, IKeypoint):
+                yolopose_weights = convert_yolopose(l)
+                if save_weights:
+                    for yolo_w in yolopose_weights:
+                        layer_weights_filename = path.join(path.dirname(output_filename), "layer_" + str(counter) + ".txt")
+                        counter += 1
+                        with open(layer_weights_filename, "w") as txt_file:
+                            for v in yolo_w:
+                                txt_file.write(str(v) + "\n")
             else:
                 counter += 1
         else:
@@ -190,6 +237,7 @@ def main(input_filename, layers, append_filename, output_filename):
     for i in range(len(repconv_weights)):
         weights.extend(repconv_weights[i])
         weights.extend(yolo_weights[i])
+        weights.extend(yolopose_weights[i])
 
     if append_filename:
         copyfile(append_filename, output_filename)
@@ -211,16 +259,18 @@ def show_usage():
           '-l/--layers layers\' indices, comma separated, \'-\' indicate range | '
           '-a/--append_filename append weights to this filename | '
           '-o/--output_filename output filename | '
+          '-s/--save_weights save layers\' weights | '
           '-h/--help')
 
 
 if __name__ == '__main__':
     try:
-        opts, args = getopt.getopt(sys.argv[1:], 'hi:l:a:o:', ['help',
-                                                               'input_filename=',
-                                                               'layers=',
-                                                               'append_filename=',
-                                                               'output_filename='])
+        opts, args = getopt.getopt(sys.argv[1:], 'hi:l:a:o:s', ['help',
+                                                                'input_filename=',
+                                                                'layers=',
+                                                                'append_filename=',
+                                                                'output_filename=',
+                                                                'save_weights'])
     except getopt.GetoptError as err:
         print(str(err))
         show_usage()
@@ -230,6 +280,7 @@ if __name__ == '__main__':
     layers = None
     append_filename = None
     output_filename = None
+    save_weights = False
 
     for o, a in opts:
         if o in ('-h', '--help'):
@@ -243,5 +294,7 @@ if __name__ == '__main__':
             append_filename = a
         elif o in ('-o', '--output_filename'):
             output_filename = a
+        elif o in ('-s', '--save_weights'):
+            save_weights = True
 
-    main(input_filename, layers, append_filename, output_filename)
+    main(input_filename, layers, append_filename, output_filename, save_weights)
