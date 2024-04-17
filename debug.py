@@ -152,9 +152,9 @@ def main(input_filename, model_filename, input_size, output_filename):
                 np.array(len(save_output.outputs)).tofile(f)
                 for o in save_output.outputs:
                     f.write(o[0].encode())
-                    np.array(o[1]).tofile(f)
+                    np.array(o[1], dtype=np.int32).tofile(f)
                     np.array(o[2]).tofile(f)
-                    np.array(o[3]).tofile(f)
+                    np.array(o[3], dtype=np.int32).tofile(f)
                     np.array(o[4]).tofile(f)
 
 
