@@ -41,8 +41,6 @@ class SaveOutput:
         else:
             self.outputs.append((layer_type,
                                 module_out.shape,
-                                module_out.detach(),
-                                module_out.shape,
                                 module_out.detach()))
         if isinstance(module, torch.nn.Conv2d):
             self.outputs[-1] += (module.weight.shape,
@@ -159,8 +157,9 @@ def main(input_filename, model_filename, input_size, output_filename):
                     f.write(o[0].encode())
                     np.array(o[1], dtype=np.int32).tofile(f)
                     np.array(o[2]).tofile(f)
-                    np.array(o[3], dtype=np.int32).tofile(f)
-                    np.array(o[4]).tofile(f)
+                    if len(o) > 3:
+                        np.array(o[3], dtype=np.int32).tofile(f)
+                        np.array(o[4]).tofile(f)
                     if len(o) == 9:
                         np.array(o[5], dtype=np.int32).tofile(f)
                         np.array(o[6]).tofile(f)
