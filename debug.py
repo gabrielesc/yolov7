@@ -44,6 +44,11 @@ class SaveOutput:
                                 module_out.detach(),
                                 module_out.shape,
                                 module_out.detach()))
+        if isinstance(module, torch.nn.Conv2d):
+            self.outputs[-1] += (module.weight.shape,
+                                 module.weight.detach(),
+                                 module.bias.shape,
+                                 module.bias.detach())
  
     def clear(self):
         self.outputs = []
@@ -156,6 +161,11 @@ def main(input_filename, model_filename, input_size, output_filename):
                     np.array(o[2]).tofile(f)
                     np.array(o[3], dtype=np.int32).tofile(f)
                     np.array(o[4]).tofile(f)
+                    if len(o) == 9:
+                        np.array(o[5], dtype=np.int32).tofile(f)
+                        np.array(o[6]).tofile(f)
+                        np.array(o[7], dtype=np.int32).tofile(f)
+                        np.array(o[8]).tofile(f)
 
 
 def show_usage():
