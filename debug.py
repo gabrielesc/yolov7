@@ -121,6 +121,9 @@ def main(input_filename, model_filename, input_size, output_filename):
                 l.cv3.act.register_forward_hook(save_output)
                 l.cv4.conv.register_forward_hook(save_output)
                 l.cv4.act.register_forward_hook(save_output)
+                l.m[0].register_forward_hook(save_output)
+                l.m[1].register_forward_hook(save_output)
+                l.m[2].register_forward_hook(save_output)
                 l.cv5.conv.register_forward_hook(save_output)
                 l.cv5.act.register_forward_hook(save_output)
                 l.cv6.conv.register_forward_hook(save_output)
@@ -153,7 +156,8 @@ def main(input_filename, model_filename, input_size, output_filename):
         if output_filename is not None:
             with open(output_filename, 'wb') as f:
                 np.array(len(save_output.outputs), dtype=np.int32).tofile(f)
-                for o in save_output.outputs:
+                for n, o in enumerate(save_output.outputs):
+                    print(str(n) + ' ' + o[0])
                     f.write(o[0].encode())
                     np.array(o[1], dtype=np.int32).tofile(f)
                     np.array(o[2]).tofile(f)

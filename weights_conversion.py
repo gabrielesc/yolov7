@@ -95,14 +95,14 @@ def convert_yolopose(l):
         for m in l.m_kpt[i]:
             if isinstance(m, Conv):
                 m_weights = convert_conv(m)
-                weights.extend(m_weights)
+                w.extend(m_weights)
             elif isinstance(m, nn.Conv2d):
                 if m.bias is not None:
-                    weights.extend(m.bias.detach().numpy())
+                    w.extend(m.bias.detach().numpy())
                 else:
-                    weights.extend(np.zeros(m.out_channels))
+                    w.extend(np.zeros(m.out_channels))
                 # write convolutional layer weights
-                weights.extend(m.weight.detach().numpy().flatten())
+                w.extend(m.weight.detach().numpy().flatten())
 
         weights.append(w)
 
@@ -236,8 +236,10 @@ def main(input_filename, layers, append_filename, output_filename, save_weights)
 
     for i in range(len(repconv_weights)):
         weights.extend(repconv_weights[i])
-        weights.extend(yolo_weights[i])
-        weights.extend(yolopose_weights[i])
+        if i < len(yolo_weights):
+            weights.extend(yolo_weights[i])
+        if i < len(yolopose_weights):
+            weights.extend(yolopose_weights[i])
 
     if append_filename:
         copyfile(append_filename, output_filename)
